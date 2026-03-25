@@ -82,6 +82,10 @@ header h1 {
   line-height: 1.1;
 }
 
+header h1 span {
+  color: var(--color-accent);
+}
+
 header p {
   color: #94a3b8;
   margin-top: 0.75rem;
