@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'scripts/build.sh'
+
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: ./scripts/build.sh
+
+      - name: Deploy to Object Storage
+        env:
+          FOS_ACCESS_KEY: ${{ secrets.FOS_ACCESS_KEY }}
+          FOS_SECRET_KEY: ${{ secrets.FOS_SECRET_KEY }}
+          FOS_BUCKET: ${{ secrets.FOS_BUCKET }}
+          FOS_REGION: ${{ secrets.FOS_REGION }}
+        run: ./scripts/deploy.sh
+
+      - name: Purge Fastly cache
+        env:
+          FASTLY_API_TOKEN: ${{ secrets.FASTLY_API_TOKEN }}
+        run: |
+          SERVICE_ID=$(sed -n 's/^service_id *= *"\(.*\)"/\1/p' fastly.toml)
+          if [ -z "$SERVICE_ID" ]; then
+            echo "Warning: No service_id in fastly.toml, skipping purge"
+            exit 0
+          fi
+          curl -s -X POST \
+            -H "Fastly-Key: ${FASTLY_API_TOKEN}" \
+            "https://api.fastly.com/service/${SERVICE_ID}/purge_all"
+          echo "Cache purged"

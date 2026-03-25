@@ -1,0 +1,3 @@
+# Fastly service configuration for staticly
+# service_id is written by scripts/setup.sh
+manifest_version = 3

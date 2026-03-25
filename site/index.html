@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Staticly - Static Site Hosting on Fastly Object Storage</title>
+  <meta name="description" content="Host a static site entirely on Fastly using Object Storage as the origin and a VCL CDN service. No external hosting needed. Full setup guide with scripts.">
+  <link rel="canonical" href="https://staticly.example.com/">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="/css/style.css">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Staticly - Static Site Hosting on Fastly Object Storage">
+  <meta property="og:description" content="Host a static site entirely on Fastly using Object Storage as the origin and a VCL CDN service. Full setup guide with scripts.">
+  <meta property="og:url" content="https://staticly.example.com/">
+  <meta property="og:site_name" content="Staticly">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Staticly - Static Site Hosting on Fastly Object Storage">
+  <meta name="twitter:description" content="Host a static site entirely on Fastly using Object Storage and a VCL CDN service. No external hosting needed.">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Staticly - Static Site Hosting on Fastly Object Storage",
+    "description": "A complete guide to hosting a static site on Fastly using Object Storage as the origin and a VCL CDN service with edge caching and shielding.",
+    "url": "https://staticly.example.com/",
+    "author": {
+      "@type": "Person",
+      "name": "Grant Stephens",
+      "url": "https://github.com/grantstephens"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Grant Stephens"
+    },
+    "about": {
+      "@type": "Thing",
+      "name": "Static site hosting"
+    },
+    "isAccessibleForFree": true,
+    "inLanguage": "en"
+  }
+  </script>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div>
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <img src="/assets/favicon.svg" alt="Staticly logo" class="logo">
+          <h1>Staticly</h1>
+        </div>
+        <p>Host a static site on Fastly using Object Storage and a VCL service.</p>
+        <div class="header-links">
+          <a href="https://github.com/grantstephens/statickly">GitHub</a>
+          <a href="https://docs.fastly.com/products/object-storage">Fastly Object Storage</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <h2>Overview</h2>
+
+    <p>
+      This guide walks through hosting a static site entirely on Fastly's
+      network using
+      <a href="https://docs.fastly.com/products/object-storage">Fastly Object Storage</a>
+      as the origin and a VCL CDN service to serve content at the edge.
+      No external hosting provider or cloud storage account is needed.
+    </p>
+
+    <p>
+      All code, scripts, and VCL lives in the
+      <a href="https://github.com/grantstephens/statickly">GitHub repository</a>.
+    </p>
+
+    <div class="diagram">
+      <pre>
+        Client Request
+              |
+              v
+     Fastly Edge POP (cache)
+              |
+              |  cache miss
+              |
+              v
+     Fastly Shield POP (cache)
+              |
+              |  shield miss &mdash; VCL signs
+              |  request with AWS SigV4
+              |
+              v
+     Fastly Object Storage
+              |
+              v
+     Response cached at shield,
+     then at edge, served to client</pre>
+    </div>
+
+    <ul class="features">
+      <li><strong>Fastly-native</strong> Everything on Fastly's network, no external origin</li>
+      <li><strong>Edge-cached</strong> Content cached globally after first request</li>
+      <li><strong>Shielded</strong> Single POP talks to origin, reducing storage load</li>
+      <li><strong>S3-compatible</strong> Upload with curl, AWS CLI, or any S3 tool</li>
+      <li><strong>Secure credentials</strong> Stored in a private Edge Dictionary</li>
+      <li><strong>Simple deploy</strong> One script to build, one to deploy</li>
+    </ul>
+
+    <h2>Prerequisites</h2>
+
+    <ul>
+      <li>A <a href="https://www.fastly.com/signup">Fastly account</a> with Object Storage enabled</li>
+      <li>The <a href="https://www.fastly.com/documentation/reference/cli/">Fastly CLI</a> installed and authenticated (<code>fastly auth login</code>)</li>
+      <li><code>curl</code> &ge; 7.75 (for <code>--aws-sigv4</code> support)</li>
+      <li><code>jq</code> for JSON parsing in the setup script</li>
+    </ul>
+
+    <h2>Quick Start</h2>
+
+    <p>
+      <a href="https://github.com/grantstephens/statickly/blob/main/scripts/setup.sh"><code>scripts/setup.sh</code></a>
+      automates the entire setup &mdash; Object Storage bucket, Fastly service,
+      Edge Dictionary, backend, and VCL snippets &mdash; in one command:
+    </p>
+
+    <div class="quickstart">
+      <pre><code>./scripts/setup.sh &lt;service-name&gt; &lt;domain&gt; &lt;bucket-name&gt; &lt;region&gt;</code></pre>
+      <p style="margin-bottom:0.75rem">
+        Setup saves credentials to <code>.env</code> (gitignored).
+        Then build and deploy:
+      </p>
+      <pre><code>./scripts/build.sh
+./scripts/deploy.sh</code></pre>
+    </div>
+
+    <p>The rest of this guide explains what those scripts do and why.</p>
+
+    <h2>What the Setup Does</h2>
+
+    <p>
+      The <a href="https://github.com/grantstephens/statickly/blob/main/scripts/setup.sh">setup script</a>
+      performs these steps via the Fastly CLI and <code>curl</code> &mdash; no
+      control panel needed:
+    </p>
+
+    <div class="steps">
+
+      <div class="step">
+        <h3>Create Object Storage Access Keys</h3>
+        <p>
+          Access keys authenticate requests to Object Storage via the
+          S3-compatible API. The script creates a key pair using the Fastly CLI.
+        </p>
+        <div class="warning">
+          <strong>Important</strong>
+          The secret key is only shown once at creation time. The setup script
+          prints it at the end &mdash; save it securely.
+        </div>
+      </div>
+
+      <div class="step">
+        <h3>Create an Object Storage Bucket</h3>
+        <p>
+          The Fastly CLI doesn't have a bucket creation command, so the script
+          calls the S3-compatible <code>CreateBucket</code> API directly via
+          <code>curl --aws-sigv4</code>. Bucket name and
+          <a href="https://www.fastly.com/documentation/guides/platform/object-storage/working-with-object-storage/#using-the-s3-compatible-api">region</a>
+          are provided as arguments.
+        </p>
+      </div>
+
+      <div class="step">
+        <h3>Create a Fastly VCL Service</h3>
+        <p>
+          A standard CDN service is created with a domain and the Object Storage
+          regional endpoint as the backend origin, using TLS with the correct
+          SNI and certificate hostname settings.
+        </p>
+        <p>
+          The backend is configured with a
+          <a href="https://www.fastly.com/documentation/guides/concepts/shielding/">shield POP</a>
+          close to the Object Storage region. Shielding designates a single
+          Fastly POP as the sole point of contact with the origin &mdash; all
+          other POPs fetch from the shield rather than going to Object Storage
+          directly. This collapses many parallel cache misses into fewer origin
+          requests, improving cache hit ratio and reducing load on the storage
+          backend.
+        </p>
+        <p>
+          The setup script automatically selects the best shield POP based on the
+          Object Storage region (e.g. <code>iad-va-us</code> for
+          <code>us-east</code>, <code>amsterdam-nl</code> for
+          <code>eu-central</code>).
+        </p>
+      </div>
+
+      <div class="step">
+        <h3>Create a Private Edge Dictionary</h3>
+        <p>
+          <a href="https://www.fastly.com/documentation/guides/concepts/dynamic-config">Edge Dictionaries</a>
+          are versionless key-value stores accessible from VCL at runtime. A
+          <em>private</em> (write-only) dictionary is created and populated with
+          the access key, secret key, bucket name, and region.
+        </p>
+        <p>Using a private dictionary means:</p>
+        <ul>
+          <li>Credentials stay out of VCL source and version history</li>
+          <li>They can be rotated without creating a new service version</li>
+          <li>The API won't return the values when the dictionary is listed</li>
+        </ul>
+        <div class="note">
+          <strong>Note</strong>
+          Private dictionaries are stored in plain text on Fastly's
+          infrastructure &mdash; not encrypted like Secret Stores (Compute only).
+          For VCL services, they are the best available option.
+        </div>
+      </div>
+
+      <div class="step">
+        <h3>Add VCL Snippets</h3>
+        <p>Five VCL snippets handle request routing, authentication, errors, and caching:</p>
+        <p>
+          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/recv.vcl"><code>vcl/recv.vcl</code></a>
+          runs in <code>vcl_recv</code>. Strips query strings (static sites
+          don't use them), redirects extensionless paths to add a trailing
+          slash, and appends <code>index.html</code> to directory paths.
+        </p>
+        <p>
+          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/miss.vcl"><code>vcl/miss.vcl</code></a>
+          runs in <code>vcl_miss</code>. On a cache miss at the shield it
+          reads credentials from the Edge Dictionary, constructs an
+          <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-auth-using-authorization-header.html">AWS SigV4</a>
+          <code>Authorization</code> header, prepends the bucket name to the
+          path, and sends the signed request to Object Storage. Handles both
+          GET and HEAD requests.
+        </p>
+        <p>
+          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/fetch.vcl"><code>vcl/fetch.vcl</code></a>
+          runs in <code>vcl_fetch</code>. Intercepts 403/404 responses from
+          Object Storage and triggers a custom error page.
+        </p>
+        <p>
+          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/error.vcl"><code>vcl/error.vcl</code></a>
+          runs in <code>vcl_error</code>. Generates 301 redirects for the
+          trailing-slash rewrite and returns a styled 404 page when files are
+          not found in Object Storage.
+        </p>
+        <p>
+          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/deliver.vcl"><code>vcl/deliver.vcl</code></a>
+          runs in <code>vcl_deliver</code>. Sets <code>Cache-Control</code>
+          headers: HTML is revalidated on every request, while static assets
+          (CSS, images, fonts) are cached for one year with <code>immutable</code>.
+        </p>
+      </div>
+
+      <div class="step">
+        <h3>Activate the Service</h3>
+        <p>
+          The service version is activated, making it live on Fastly's edge
+          network.
+        </p>
+      </div>
+
+    </div>
+
+    <h2>Build and Deploy</h2>
+
+    <p>With the service set up, deploying content is two steps:</p>
+
+    <h3>Build</h3>
+    <p>
+      <a href="https://github.com/grantstephens/statickly/blob/main/scripts/build.sh"><code>scripts/build.sh</code></a>
+      copies <code>site/</code> into <code>dist/</code> for deployment. This is
+      intentionally simple &mdash; it's where you would add minification, asset
+      processing, or other build steps.
+    </p>
+
+    <h3>Deploy</h3>
+    <p>
+      <a href="https://github.com/grantstephens/statickly/blob/main/scripts/deploy.sh"><code>scripts/deploy.sh</code></a>
+      uploads each file in <code>dist/</code> to Object Storage using
+      <code>curl --aws-sigv4</code>, setting the <code>Content-Type</code>
+      header based on file extension. The Content-Type set during upload is
+      what Object Storage stores and returns on <code>GET</code>.
+    </p>
+
+    <h3>CI/CD</h3>
+    <p>
+      A <a href="https://github.com/grantstephens/statickly/blob/main/.github/workflows/deploy.yml">GitHub Actions workflow</a>
+      automatically builds, deploys, and purges the cache when changes to
+      <code>site/</code> are pushed to <code>main</code>. It requires five
+      repository secrets:
+    </p>
+    <ul>
+      <li><code>FOS_ACCESS_KEY</code> and <code>FOS_SECRET_KEY</code> &mdash; Object Storage credentials</li>
+      <li><code>FOS_BUCKET</code> and <code>FOS_REGION</code> &mdash; bucket name and region</li>
+      <li><code>FASTLY_API_TOKEN</code> &mdash; a Fastly API token for cache purging</li>
+    </ul>
+
+    <h2>Request Flow</h2>
+
+    <ol>
+      <li>Client requests <code>https://example.com/</code></li>
+      <li>Fastly runs <code>vcl_recv</code>, rewrites <code>/</code> to <code>/index.html</code></li>
+      <li>On a cache miss at the edge POP, the request is forwarded to the shield POP</li>
+      <li>On a shield miss, <code>vcl_miss</code> reads credentials from the Edge Dictionary</li>
+      <li>VCL constructs an AWS SigV4 <code>Authorization</code> header</li>
+      <li>The bucket name is prepended: <code>/index.html</code> becomes <code>/my-bucket/index.html</code></li>
+      <li>The shield sends the signed request to Object Storage</li>
+      <li>Object Storage returns the file; the shield caches it, the edge POP caches it, and the client is served</li>
+    </ol>
+
+    <h2>Project Structure</h2>
+
+    <div class="structure">
+      <pre><code>staticly/
+├── .github/workflows/
+│   └── deploy.yml            # Auto-deploy on push to main
+├── site/                     # Static site source files
+│   ├── index.html            # This page
+│   ├── css/style.css         # Styles
+│   ├── assets/favicon.svg    # Favicon
+│   ├── robots.txt            # Crawler rules
+│   └── sitemap.xml           # Sitemap for search engines
+├── vcl/
+│   ├── recv.vcl              # Query strings, redirects, default docs
+│   ├── miss.vcl              # SigV4 request signing
+│   ├── fetch.vcl             # Backend error interception
+│   ├── error.vcl             # Custom 404, trailing-slash redirects
+│   └── deliver.vcl           # Cache-Control headers
+├── scripts/
+│   ├── setup.sh              # One-command service setup
+│   ├── build.sh              # Build site source into dist/
+│   ├── deploy.sh             # Upload dist/ to Object Storage
+│   └── teardown.sh           # Remove service and clean up
+├── fastly.toml               # Fastly CLI config (written by setup.sh)
+├── .env                      # Credentials (written by setup.sh, gitignored)
+├── .gitignore
+└── README.md</code></pre>
+    </div>
+
+    <h2>Limitations</h2>
+
+    <ul>
+      <li>
+        <strong>MIME type mapping is manual.</strong>
+        Uncommon file types default to <code>application/octet-stream</code>.
+      </li>
+      <li>
+        <strong>No automatic cache invalidation.</strong>
+        Redeployed files need a cache purge (<code>fastly service purge --all</code>)
+        or TTL expiry to take effect. The deploy script prints a reminder.
+      </li>
+      <li>
+        <strong>Private dictionaries are not encrypted.</strong>
+        They prevent API enumeration but are stored in plain text. Compute
+        services can use Secret Stores for encryption.
+      </li>
+      <li>
+        <strong>Single storage region.</strong>
+        Object Storage is regional. Shielding ensures only one POP talks to the
+        origin, but the data itself lives in one region. Multi-region would need
+        multiple buckets with replication.
+      </li>
+      <li>
+        <strong>curl &ge; 7.75 required.</strong>
+        Older systems may need the AWS CLI or another S3-compatible tool.
+      </li>
+    </ul>
+
+  </main>
+
+  <footer class="container">
+    <a href="https://github.com/grantstephens/statickly">Source on GitHub</a>
+    <span class="meta">This site is hosted using the method described above.</span>
+  </footer>
+
+</body>
+</html>

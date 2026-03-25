@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://staticly.example.com/sitemap.xml
