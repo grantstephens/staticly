@@ -58,7 +58,7 @@
         </div>
         <p>Host a static site on Fastly using Object Storage and a VCL service.</p>
         <div class="header-links">
-          <a href="https://github.com/grantstephens/statickly">GitHub</a>
+          <a href="https://github.com/grantstephens/staticly">GitHub</a>
           <a href="https://docs.fastly.com/products/object-storage">Fastly Object Storage</a>
         </div>
       </div>
@@ -79,7 +79,7 @@
 
     <p>
       All code, scripts, and VCL lives in the
-      <a href="https://github.com/grantstephens/statickly">GitHub repository</a>.
+      <a href="https://github.com/grantstephens/staticly">GitHub repository</a>.
     </p>
 
     <div class="diagram">
@@ -126,7 +126,7 @@
     <h2>Quick Start</h2>
 
     <p>
-      <a href="https://github.com/grantstephens/statickly/blob/main/scripts/setup.sh"><code>scripts/setup.sh</code></a>
+      <a href="https://github.com/grantstephens/staticly/blob/main/scripts/setup.sh"><code>scripts/setup.sh</code></a>
       automates the entire setup &mdash; Object Storage bucket, Fastly service,
       Edge Dictionary, backend, and VCL snippets &mdash; in one command:
     </p>
@@ -146,7 +146,7 @@
     <h2>What the Setup Does</h2>
 
     <p>
-      The <a href="https://github.com/grantstephens/statickly/blob/main/scripts/setup.sh">setup script</a>
+      The <a href="https://github.com/grantstephens/staticly/blob/main/scripts/setup.sh">setup script</a>
       performs these steps via the Fastly CLI and <code>curl</code> &mdash; no
       control panel needed:
     </p>
@@ -228,13 +228,13 @@
         <h3>Add VCL Snippets</h3>
         <p>Five VCL snippets handle request routing, authentication, errors, and caching:</p>
         <p>
-          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/recv.vcl"><code>vcl/recv.vcl</code></a>
+          <a href="https://github.com/grantstephens/staticly/blob/main/vcl/recv.vcl"><code>vcl/recv.vcl</code></a>
           runs in <code>vcl_recv</code>. Strips query strings (static sites
           don't use them), redirects extensionless paths to add a trailing
           slash, and appends <code>index.html</code> to directory paths.
         </p>
         <p>
-          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/miss.vcl"><code>vcl/miss.vcl</code></a>
+          <a href="https://github.com/grantstephens/staticly/blob/main/vcl/miss.vcl"><code>vcl/miss.vcl</code></a>
           runs in <code>vcl_miss</code>. On a cache miss at the shield it
           reads credentials from the Edge Dictionary, constructs an
           <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-auth-using-authorization-header.html">AWS SigV4</a>
@@ -243,18 +243,18 @@
           GET and HEAD requests.
         </p>
         <p>
-          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/fetch.vcl"><code>vcl/fetch.vcl</code></a>
+          <a href="https://github.com/grantstephens/staticly/blob/main/vcl/fetch.vcl"><code>vcl/fetch.vcl</code></a>
           runs in <code>vcl_fetch</code>. Intercepts 403/404 responses from
           Object Storage and triggers a custom error page.
         </p>
         <p>
-          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/error.vcl"><code>vcl/error.vcl</code></a>
+          <a href="https://github.com/grantstephens/staticly/blob/main/vcl/error.vcl"><code>vcl/error.vcl</code></a>
           runs in <code>vcl_error</code>. Generates 301 redirects for the
           trailing-slash rewrite and returns a styled 404 page when files are
           not found in Object Storage.
         </p>
         <p>
-          <a href="https://github.com/grantstephens/statickly/blob/main/vcl/deliver.vcl"><code>vcl/deliver.vcl</code></a>
+          <a href="https://github.com/grantstephens/staticly/blob/main/vcl/deliver.vcl"><code>vcl/deliver.vcl</code></a>
           runs in <code>vcl_deliver</code>. Sets <code>Cache-Control</code>
           headers: HTML is revalidated on every request, while static assets
           (CSS, images, fonts) are cached for one year with <code>immutable</code>.
@@ -277,7 +277,7 @@
 
     <h3>Build</h3>
     <p>
-      <a href="https://github.com/grantstephens/statickly/blob/main/scripts/build.sh"><code>scripts/build.sh</code></a>
+      <a href="https://github.com/grantstephens/staticly/blob/main/scripts/build.sh"><code>scripts/build.sh</code></a>
       copies <code>site/</code> into <code>dist/</code> for deployment. This is
       intentionally simple &mdash; it's where you would add minification, asset
       processing, or other build steps.
@@ -285,7 +285,7 @@
 
     <h3>Deploy</h3>
     <p>
-      <a href="https://github.com/grantstephens/statickly/blob/main/scripts/deploy.sh"><code>scripts/deploy.sh</code></a>
+      <a href="https://github.com/grantstephens/staticly/blob/main/scripts/deploy.sh"><code>scripts/deploy.sh</code></a>
       uploads each file in <code>dist/</code> to Object Storage using
       <code>curl --aws-sigv4</code>, setting the <code>Content-Type</code>
       header based on file extension. The Content-Type set during upload is
@@ -294,7 +294,7 @@
 
     <h3>CI/CD</h3>
     <p>
-      A <a href="https://github.com/grantstephens/statickly/blob/main/.github/workflows/deploy.yml">GitHub Actions workflow</a>
+      A <a href="https://github.com/grantstephens/staticly/blob/main/.github/workflows/deploy.yml">GitHub Actions workflow</a>
       automatically builds, deploys, and purges the cache when changes to
       <code>site/</code> are pushed to <code>main</code>. It requires five
       repository secrets:
@@ -379,7 +379,7 @@
   </main>
 
   <footer class="container">
-    <a href="https://github.com/grantstephens/statickly">Source on GitHub</a>
+    <a href="https://github.com/grantstephens/staticly">Source on GitHub</a>
     <span class="meta">This site is hosted using the method described above.</span>
   </footer>
 
